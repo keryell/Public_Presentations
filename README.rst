@@ -1,7 +1,7 @@
-LaTeX/beamer sources for introductive presentation at the advanced
-SYCL tutorial at SYCLcon 2023.
+LaTeX/beamer sources for some public presentations I gave, typically
+introductive SYCL presentations.
 
-To compile the presentation::
+For example, to compile a presentation::
 
   cd 2023/2023-04-18-SYCLcon-tutorial-introduction
   make
