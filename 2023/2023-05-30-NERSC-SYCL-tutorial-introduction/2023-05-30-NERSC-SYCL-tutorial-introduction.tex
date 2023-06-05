@@ -47,11 +47,11 @@
 
 \author[]{Ronan Keryell (\url{ronan.keryell@amd.com})}
 
-\title[Advanced SYCL tutorial --- Introduction]{Advanced SYCL tutorial}
+\title[Advanced SYCL Techniques and Best Practices]{SYCL introduction}
 
-\subtitle{Introduction and recapitulation of previous episodes}
+\subtitle{Advanced SYCL Techniques and Best Practices}
 
-\date{2023/04/18 @ SYCLcon}
+\date{2023/05/30 @ NERSC}
 
 \institute[\copyright{} Copyright 2023 Khronos]{Fellow Software
   Development Engineer @ AMD Research \& Advanced Development\\
@@ -84,6 +84,7 @@
   \begin{itemize}
   \item<+-> Add your own accelerator to this picture...
   \item<+-> Scale this from embedded system to data-center/HPC level\ldots
+  \item<+-> Chiplet revolution allows mix-and-match in package
   \item<+-> Need a programming model for the \emph{full} system\ldots
   \item<+-> Tim Mattson's law: no new language! \smiley
   \end{itemize}
@@ -545,7 +546,7 @@ int main() {
 \end{frame}
 
 
-\begin{frame}{Use cases for SYCL interoperability with backend}
+\begin{frame}{Unique SYCL feature: interoperability with backends}
   \begin{itemize}
   \item Porting existing code
     \begin{itemize}
@@ -899,7 +900,8 @@ void MyFunc(sycl::queue q, sycl::buffer<int> buf) {
       \url{https://github.com/illuhad/hipSYCL/blob/develop/doc/extensions.md}
     \item Samsung PiM extensions
     \item AMD extensions (FPGA, AIE, C++23)
-    \item Celerity \url{https://celerity.github.io}
+    \item Celerity \url{https://celerity.github.io} on top of MPI +
+      SYCL ($\approx$ PGAS)
     \item \ldots
     \end{itemize}
   \end{itemize}
@@ -945,13 +947,15 @@ void MyFunc(sycl::queue q, sycl::buffer<int> buf) {
     \item A dozen of implementations with back-ends \&
       interoperability with other ecosystems (Vulkan, OpenCL, OpenMP, TBB,
       proprietary: CUDA, HIP, Level 0...)
+    \item Performance close to the native back-end
     \end{itemize}
   \item Open-source + open standards
     \begin{itemize}
     \item No user locked-in!
     \item Benefit from collaboration for better code quality
-    \item Still not happy? Do it the standard way! Participate to
-      the standards and to open-source implementations to have a real
+    \item Tool available to translate from competitor framework
+    \item Still not happy? Do it the standard way! Participate to the
+      standards and to open-source implementations to have a real
       impact! \smiley
     \end{itemize}
   \item Pure single-source C++ domain-specific language to complement
