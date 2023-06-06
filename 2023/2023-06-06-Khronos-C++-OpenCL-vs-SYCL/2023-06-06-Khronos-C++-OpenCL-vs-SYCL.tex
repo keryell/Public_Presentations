@@ -51,12 +51,13 @@
 
 \subtitle{OpenCL, SYCL (and Vulkan, OpenVX?)}
 
-\date{2023/06/06 @ Khronos OpenCL WG}
+\date{2023/06/06 @ Khronos OpenCL WG virtual F2F}
 
 \institute[\copyright{} Copyright 2023 Khronos]{Fellow Software
   Development Engineer @ AMD Research \& Advanced Development\\
   % San José, California\\
-  Khronos SYCL specification editor \& ISO C++ committee member}
+  Khronos SYCL specification editor, Khronos SPIR \& OpenCL member \&
+  ISO C++ committee member}
 
 % Remove the logo
 %%\pgfdeclareimage[width=0.8cm]{logo-SYCL}{Khronos/Logos/SYCL/SYCL_500px_June16}
@@ -164,22 +165,75 @@ for (std::vector<int>::iterator i =
     \item Legacy OpenCL C source code
     \item OpenCL C++ 1.0 for OpenCL 2.2
       \begin{itemize}
-      \item Inspired by SYCL 2.2 modernism but incompatible with
-        legacy OpenCL C
+      \item Inspired by SYCL 2.2 modernism \smiley{} but incompatible
+        with legacy OpenCL C \frownie
       \end{itemize}
     \item Khronos-friendly-but-independent \emph{C++ for OpenCL} in
       Clang/LLVM \url{https://clang.llvm.org/docs/OpenCLSupport.html}
       \url{https://www.khronos.org/opencl/assets/CXX_for_OpenCL.html}
     \end{itemize}
-  \item Split-source + JIT allows easy meta-programming with strings
+  \item Split-source + JIT \vavers{} easy meta-programming with
+    strings
+    \begin{itemize}
+    \item Common concept graphics and hardware community
+    \end{itemize}
   \end{itemize}
 \end{frame}
 
 
+\begin{frame}[fragile]{Vector addition with OpenCL C++ host API v2}
+  \begin{multicols}{2}
+    \begin{lstlisting}[basicstyle=\tiny]
+#include <iostream>
+#include <iterator>
 
-\begin{frame}{SYCL ecosystem is growing}
-  \centerline{\includegraphics[height=0.8\textheight]{Images/Languages/SYCL/Implementations/SYCL-ecosystem-2023-04-13}}
-  \url{https://www.khronos.org/blog/sycl-2020-what-do-you-need-to-know}
+#define CL_HPP_ENABLE_EXCEPTIONS
+#include <CL/cl2.hpp>
+
+constexpr size_t N = 3;
+using Vector = float[N];
+
+int main() {
+  Vector a = { 1, 2, 3 };
+  Vector b = { 5, 6, 8 };
+  Vector c;
+
+  // The input read-only buffers for OpenCL on default context
+  cl::Buffer buffer_a { std::begin(a), std::end(a), true};
+  cl::Buffer buffer_b { std::begin(b), std::end(b), true};
+
+  // The output buffer for OpenCL on default context
+  cl::Buffer buffer_c { CL_MEM_WRITE_ONLY, sizeof(c) };
+
+  // Construct an OpenCL program from the source file
+  const char kernel_source[] = R"(
+__kernel void vector_add(const __global float *a,
+                         const __global float *b,
+                         __global float *c) {
+  c[get_global_id(0)] = a[get_global_id(0)] + b[get_global_id(0)];
+}
+)";
+
+  // Compile and build the program
+  cl::Program p { kernel_source, true };
+  // Create the kernel functor taking 3 buffers as parameter
+  cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer> k
+    { p, "vector_add" };
+
+  // Call the kernel with N work-items on default command queue
+  k(cl::EnqueueArgs(cl::NDRange(N)), buffer_a, buffer_b, buffer_c);
+
+  // Get the output data from the accelerator
+  cl::copy(buffer_c, std::begin(c), std::end(c));
+
+  std::cout << std::endl << "Result:" << std::endl;
+  for(auto e : c)
+    std::cout << e << " ";
+  std::cout << std::endl;
+}
+    \end{lstlisting}
+  \end{multicols}
+  \url{https://github.com/keryell/heterogeneous_examples/blob/main/vector_add/OpenCL-CLHPP/opencl_vector_add.cpp}
 \end{frame}
 
 
@@ -281,7 +335,13 @@ int main () {
 \end{frame}
 
 
-\begin{frame}{Some of the existing SYCL back-ends}
+\begin{frame}{SYCL grew beyond OpenCL HLM}
+  \centerline{\includegraphics[height=0.8\textheight]{Images/Languages/SYCL/Implementations/SYCL-ecosystem-2023-04-13}}
+  \url{https://www.khronos.org/blog/sycl-2020-what-do-you-need-to-know}
+\end{frame}
+
+
+\begin{frame}{Some of the existing SYCL backends}
   \centerline{\includegraphics[height=0.8\textheight]{Images/Languages/SYCL/Implementations/sycl_rt_backend_hardware}}
 \end{frame}
 
@@ -321,20 +381,30 @@ int main () {
 \end{frame}
 
 
-\begin{frame}[fragile]{Type 1: SYCL object from backend object}
-  \framesubtitle{``Higher-level XRT'' for AMD FPGA in 43 lines with SYCL}
+\begin{frame}[fragile]{SYCL interoperability as OpenCL C++ wrapper}
+  \vspace{-.75cm}
   \begin{multicols}{2}
     \begin{lstlisting}[basicstyle=\tiny]
 #include <cassert>
+#include <cstdlib>
 #include <sycl/sycl.hpp>
-#include <sycl/ext/xilinx/xrt.hpp>
-#include <xrt.h>
-#include <xrt/xrt_kernel.h>
+#include <CL/opencl.h>
+
 constexpr int size = 4;
+
+auto check_error(auto&& function) {
+  cl_int err;
+  auto ret = function(&err);
+  if (err != CL_SUCCESS)
+    std::exit(err);
+  return ret;
+};
+
 int main() {
   sycl::buffer<int> a { size };
   sycl::buffer<int> b { size };
   sycl::buffer<int> c { size };
+
   {
     sycl::host_accessor a_a { a };
     sycl::host_accessor a_b { b };
@@ -343,90 +413,86 @@ int main() {
       a_b[i] = i + 42;
     }
   }
+
   sycl::queue q;
-  xrt::device xdev =
-    sycl::get_native<sycl::backend::xrt>(q.get_device());
-  xrt::kernel xk { xdev, xdev.load_xclbin("vadd.hw_emu.xclbin"),
-                   "vadd" };
-  sycl::kernel k
-    { sycl::make_kernel<sycl::backend::xrt>(xk, q.get_context()) };
+  std::array kernel_source { R"(
+      __kernel void vector_add(const __global float *a,
+                               const __global float *b,
+                               __global float *c) {
+        c[get_global_id(0)] = a[get_global_id(0)] + b[get_global_id(0)];
+      }
+      )" };
+  cl_context oc = sycl::get_native<sycl::backend::opencl>(q.get_context());
+  auto program = check_error([&](auto err) {
+    return clCreateProgramWithSource(oc, kernel_source.size(),
+                                     kernel_source.data(), nullptr, err);
+  });
+  check_error([&](auto err) {
+    return (*err =
+                clBuildProgram(program, 0, nullptr, nullptr, nullptr, nullptr));
+  });
+  sycl::kernel k = sycl::make_kernel<sycl::backend::opencl>(
+      check_error(
+          [&](auto err) { return clCreateKernel(program, "vector_add", err); }),
+      q.get_context());
 
   q.submit([&](sycl::handler& cgh) {
     cgh.set_args(sycl::accessor { a, cgh, sycl::read_only },
                  sycl::accessor { b, cgh, sycl::read_only },
-                 sycl::accessor { c, cgh, sycl::write_only,
-                                  sycl::no_init },
-                 size);
-    cgh.single_task(k);
+                 sycl::accessor { c, cgh, sycl::write_only, sycl::no_init });
+    cgh.parallel_for(size, k);
   });
+
   {
     sycl::host_accessor a_a { a };
     sycl::host_accessor a_b { b };
     sycl::host_accessor a_c { c };
-    for (int i = 0; i < size; ++i) {
-      int res = a_a[i] + a_b[i];
-      int val = a_c[i];
-      assert(val == res);
-    }
+    for (int i = 0; i < size; ++i)
+      assert(a_c[i] == a_a[i] + a_b[i]);
   }
 }
     \end{lstlisting}
   \end{multicols}
-  {\tiny\url{https://github.com/keryell/heterogeneous_examples/blob/main/vector_add/SYCL/vector_add_XRT_interoperability.cpp}}
-
-  \begin{BoiteA}{Typical usage}
-    Adding SYCL functionality to an existing backend-specific application
-  \end{BoiteA}
+  \tiny
+  \url{https://github.com/keryell/heterogeneous_examples/blob/main/vector_add/SYCL/vector_add_OpenCL_interoperability.cpp}
 \end{frame}
 
-\begin{frame}[fragile]{Type 2: backend object from SYCL object}
-  \begin{lstlisting}
-void MyFunc(sycl::device dev) {
-#ifdef SYCL_BACKEND_OPENCL
-  cl_device_id clDev = sycl::get_native<sycl::backend::opencl>(dev);
 
-  char builtins[SIZE];
-  size_t sz;
-  clGetDeviceInfo(clDev, CL_DEVICE_BUILT_IN_KERNELS, SIZE, builtins, &sz);
-  /* Use OpenCL builtin kernel...*/
-#else
-  /* fallback if no OpenCL backend */
-#endif
-}
-  \end{lstlisting}
-
-  \begin{BoiteA}{Typical usage}
-    Incorporate a backend-specific library into a SYCL application or
-    take advantage of a backend-specific feature
-  \end{BoiteA}
+\begin{frame}[fragile]{Vulkan C++ wrapper}
+  \begin{itemize}
+  \item \url{https://github.com/KhronosGroup/Vulkan-Hpp}
+    \begin{lstlisting}[language=c++, basicstyle=\scriptsize]
+vk::Instance instance = vk::su::createInstance( AppName, EngineName );
+vk::PhysicalDevice physicalDevice = instance.enumeratePhysicalDevices().front();
+    \end{lstlisting}
+  \item Specific namespace for RAII (Resource Acquisition Is
+    Initialization) API version $\approx$ SYCL objects
+    \begin{lstlisting}[language=c++, basicstyle=\scriptsize]
+vk::raii::Context context;
+vk::raii::Instance instance = vk::raii::su::makeInstance(context, AppName, EngineName);
+vk::raii::PhysicalDevices physicalDevices { instance };
+    \end{lstlisting}
+  \item C++20 designated initializers \emph{à la} Python
+    \begin{lstlisting}[language=c++, basicstyle=\scriptsize]
+vk::ApplicationInfo applicationInfo{ .pApplicationName   = AppName,
+                                     .applicationVersion = 1,
+                                     .pEngineName        = EngineName,
+                                     .engineVersion      = 1,
+                                     .apiVersion         = VK_API_VERSION_1_1 };
+    \end{lstlisting}
+  \item C++20 modules are coming
+  \item Other C++ wrappers available too
+    (\url{https://github.com/andy-thomason/Vookoo})
+  \end{itemize}
 \end{frame}
-
-\begin{frame}[fragile]{Type 3: schedule a backend-specific command}
-  \begin{lstlisting}
-void MyFunc(sycl::queue q, sycl::buffer<int> buf) {
-#ifdef SYCL_BACKEND_OPENCL
-  q.submit([&](sycl::handler &cgh) {
-    sycl::accessor acc{buf, cgh};
-    cgh.host_task([=](sycl::interop_handle &ih) {
-      cl_mem clMem = ih.get_native_mem<sycl::backend::opencl>(acc)[0];
-      /* use OpenCL APIs with clMem */
-    });
-  });
-#endif
-}
-  \end{lstlisting}
-  \begin{BoiteA}{Typical usage}
-    Incorporate a backend-specific library or feature into a SYCL task graph
-  \end{BoiteA}
-\end{frame}
-
 
 
 \begin{frame}{Culture}
   \begin{itemize}
-  \item No real C++ culture inside OpenCL WG
+  \item OpenCL : mostly runtime API \vavers{} no big C++ culture
+    inside OpenCL WG \frownie
     \begin{itemize}
-    \item Designing a C++ API requires some cultural knowledge
+    \item Designing C++ API requires some cultural knowledge
     \item Several vendor implementations are forks from initial Apple
       contribution
       \begin{itemize}
@@ -447,15 +513,30 @@ void MyFunc(sycl::queue q, sycl::buffer<int> buf) {
   \end{itemize}
 \end{frame}
 
-\begin{frame}[fragile]{Conclusion}
+\begin{frame}[fragile]{Unconclusion}
   \begin{itemize}
-  \item Do we care?
-  \item Who wants to push C++?
-  \item Cultural? Market? Politics? Religious?
+  \item Do we care about C++?
+    \begin{itemize}
+    \item What about other languages? Python, Rust...
+    \end{itemize}
+  \item Is this something for independent projects?
+  \item Who wants to push C++ (with some human power) inside the
+    OpenCL WG?
   \item C++ and API: large design space, depend on C++ version...
+  \item Cultural? Market? Politics? Religion?
+  \item Just split-source vs single-source independent from C++
+    aspects?
+    \begin{itemize}
+    \item Like CUDA Driver (OpenCL) vs CUDA Runtime (SYCL)?
+    \end{itemize}
   \item Provide directions to programmers interested by C++
-    to pick an API?
-  \item Just split-source vs single-source independent from C++ aspects?
+    to pick an API (C++ OpenCL C++ vs SYCL)?
+  \item oneAPI Unified Runtime ($\approx$ SYCL backend abstraction)
+    could have been based on OpenCL API
+  \item Look also at Vulkan C++ which is split-source too?
+    \begin{itemize}
+    \item Interesting: polymorphic API according to C++ standard used
+    \end{itemize}
   \end{itemize}
 \end{frame}
 
